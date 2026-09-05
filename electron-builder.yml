@@ -56,7 +56,7 @@ linux:
   target:
     - target: deb
       arch:
-        - x64
+        - armv7l
   maintainer: Oissp <19642615+Oissp@users.noreply.github.com>
 
 # deb 压缩：保持默认 xz（fpm 1.9.3 只支持 gz|bzip2|xz）。实测 623MB 原始数据，
