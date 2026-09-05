@@ -107,12 +107,25 @@ function archName(arch) {
  * sharp / koffi / esbuild / ripgrep 等用 optionalDependencies 分发各平台二进制，
  * 它们会同时落进扁平 node_modules；x64-only 产物里 arm64/win32/darwin 的 prebuild
  * 全是死重量（数十 MB）。按包名末尾的 -<platform>-<arch> 标记排除非目标者。
+ *
+ * 特殊处理：当目标是 armv7l 时，允许 x64 二进制（CI 环境通常是 x64，交叉编译 armv7l 时
+ * npm registry 里的 prebuild 也是 x64，不能排除）。
  */
 function isNonTargetPrebuild(pkgName, targetPlatform, targetArch) {
   const m = pkgName.match(/-(linux|win32|darwin|freebsd|sunos)-(x64|arm64|arm32|ia32|armv7l)$/)
   if (!m) return false
   const [, plat, arch] = m
-  return plat !== targetPlatform || arch !== targetArch
+  
+  // 平台必须匹配
+  if (plat !== targetPlatform) return true
+  
+  // 特殊情况：当目标架构是 armv7l 时，允许 x64 二进制
+  // （原因：CI 通常运行在 x64，交叉编译 armv7l 产物时，npm registry 的 prebuild 也是 x64，
+  //  这些二进制用于构建工具链或跨平台打包，不会在最终产物运行时加载）
+  if (targetArch === 'armv7l' && arch === 'x64') return false
+  
+  // 否则架构必须完全匹配
+  return arch !== targetArch
 }
 
 /** 是否应排除某顶层包：dev 依赖、构建工具，或非目标平台的 prebuild。 */
