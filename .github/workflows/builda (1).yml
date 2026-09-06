@@ -14,21 +14,21 @@ jobs:
   build-portable-armv7l:
     name: Build dsh-portable armv7l
     runs-on: ubuntu-24.04-arm
+
     container:
       image: termux/termux-docker:arm
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       # ====== 1. 安装 Termux 基础工具 ======
       - name: Install build prerequisites
         run: |
           pkg update -y
-          pkg install tur-repo
           pkg install -y \
             build-essential \
             cmake \
             git \
-            nodejs24 \
+            nodejs-lts \
             python \
             binutils \
             curl \
