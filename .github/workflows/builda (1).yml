@@ -17,17 +17,18 @@ jobs:
     container:
       image: termux/termux-docker:arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # ====== 1. 安装 Termux 基础工具 ======
       - name: Install build prerequisites
         run: |
           pkg update -y
+          pkg install tur-repo
           pkg install -y \
             build-essential \
             cmake \
             git \
-            nodejs-lts \
+            nodejs24 \
             python \
             binutils \
             curl \
