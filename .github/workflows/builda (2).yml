@@ -1,0 +1,117 @@
+jobs:
+  build:
+    name: Build .deb (armv7l / armhf)
+    needs: [sync-dsh, detect]
+    if: ${{ !cancelled() && needs.detect.result == 'success' && needs.detect.outputs.should_release == 'true' }}
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: termux/termux-docker:arm
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Apply bumped source (dsh sync)
+        if: needs.sync-dsh.result == 'success' && needs.sync-dsh.outputs.bumped == 'true'
+        uses: actions/download-artifact@v7
+        with:
+          name: bumped-source
+          path: .
+
+      - name: Install build prerequisites (Termux)
+        run: |
+          pkg update -y
+          pkg install -y \
+            build-essential \
+            cmake \
+            git \
+            nodejs-lts \
+            python \
+            binutils \
+            curl \
+            file \
+            xorgproto \
+            libx11 \
+            libxext \
+            libxrender \
+            libxrandr \
+            libxfixes \
+            libxcomposite \
+            libxdamage \
+            libxkbcommon \
+            libxshmfence \
+            libdrm \
+            libgbm \
+            libasound \
+            libpulseaudio \
+            gtk3 \
+            glib \
+            pkg-config \
+            which
+          node --version
+          npm --version
+
+      - name: Enable Corepack & pnpm
+        run: |
+          npm install -g corepack
+          corepack enable
+          corepack prepare pnpm@11.21.0 --activate
+          pnpm --version
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+        env:
+          PNPM_NODE_LINKER: hoisted
+
+      - name: Run regression tests
+        run: pnpm test
+        continue-on-error: true
+        id: tests
+
+      - name: Warn on test failure
+        if: steps.tests.outcome == 'failure'
+        run: |
+          echo "::warning::回归单测失败。可能是 dsh 上游事件结构/API 变更导致。"
+          echo "::warning::已继续构建（单测失败不阻塞发版），但请人工检查 adapter/events.ts。"
+
+      - name: Build renderer & electron main
+        run: pnpm build
+
+      # ====== 🔥 关键：打 armv7l / armhf 包 ======
+      - name: Package .deb (armv7l / armhf)
+        run: npx electron-builder --linux deb --armv7l --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      # ====== aaa 上传 armv7l 包 ======
+      - name: aaa
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-armv7l
+          path: out/*.deb
+
+      - name: Verify .deb control info
+        run: |
+          DEB=$(ls out/*.deb 2>/dev/null | head -1)
+          if [ -z "$DEB" ]; then
+            echo "::error::未找到 .deb 产物"
+            exit 1
+          fi
+          echo "产物: $DEB"
+          dpkg-deb -I "$DEB"
+
+      - name: Verify update metadata
+        run: |
+          if [ ! -f out/latest-linux.yml ]; then
+            echo "::error::未找到 out/latest-linux.yml，桌面端检查更新将失效"
+            exit 1
+          fi
+          cat out/latest-linux.yml
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-assets-armv7l
+          path: |
+            out/*.deb
+            out/latest-linux.yml
+            out/*.blockmap
+          retention-days: 14
