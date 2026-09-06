@@ -1,0 +1,107 @@
+jobs:
+  build-portable-armv7l:
+    name: Build dsh-portable armv7l
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: termux/termux-docker:arm
+    steps:
+      - uses: actions/checkout@v5
+
+      # ====== 1. 安装 Termux 基础工具 ======
+      - name: Install build prerequisites
+        run: |
+          pkg update -y
+          pkg install -y \
+            build-essential \
+            cmake \
+            git \
+            nodejs-lts \
+            python \
+            binutils \
+            curl \
+            file \
+            tar \
+            gzip \
+            which
+          node --version
+          npm --version
+
+      # ====== 2. 安装 dsh ======
+      - name: Install dsh globally
+        run: |
+          npm install -g @deepseek-ai/dsh
+          dsh --version
+
+      # ====== 3. 准备便携版目录结构 ======
+      - name: Create portable directory structure
+        run: |
+          # 创建目录结构
+          mkdir -p portable/app/runtime
+          mkdir -p portable/app/node_modules
+          mkdir -p portable/data
+          mkdir -p portable/_build
+
+          # 复制 Node.js 运行时（从 Termux 系统复制）
+          cp $(which node) portable/app/runtime/
+          cp $(which npm) portable/app/runtime/ 2>/dev/null || true
+
+          # 复制 dsh 全局安装包
+          DSH_PATH=$(npm root -g)/@deepseek-ai/dsh
+          cp -r $DSH_PATH portable/app/node_modules/@deepseek-ai/
+
+          # 复制 pnpm（如果有）
+          which pnpm && cp $(which pnpm) portable/app/ 2>/dev/null || true
+
+      # ====== 4. 创建启动脚本（Linux armv7l） ======
+      - name: Create launcher script
+        run: |
+          cat > portable/dsh << 'EOF'
+          #!/bin/sh
+          SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+          export DSH_HOME="$SCRIPT_DIR/data"
+          export PATH="$SCRIPT_DIR/app/runtime:$PATH"
+          node "$SCRIPT_DIR/app/node_modules/@deepseek-ai/dsh/bin/dsh" "$@"
+          EOF
+          chmod +x portable/dsh
+
+          # 快捷启动脚本
+          cat > portable/start-web.sh << 'EOF'
+          #!/bin/sh
+          SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+          "$SCRIPT_DIR/dsh" web
+          EOF
+          chmod +x portable/start-web.sh
+
+          # README
+          cat > portable/README.txt << 'EOF'
+          dsh-portable armv7l
+          ===================
+          解压即用的 DeepSeek Harness 便携版（armv7l / armhf）。
+
+          快速开始：
+            ./dsh web              # 启动 Web UI → http://127.0.0.1:3080
+            ./dsh --help           # 查看所有命令
+            ./start-web.sh         # 快捷启动 Web UI
+
+          数据目录：data/
+          运行时：app/runtime/
+          核心：app/node_modules/@deepseek-ai/dsh
+
+          注意：本包在 armv7l (32-bit ARM) 设备上原生构建，
+          需要 Linux 内核和 glibc/musl 支持。
+          EOF
+
+      # ====== 5. 打包 ======
+      - name: Package tarball
+        run: |
+          VERSION=$(node -e "console.log(require('@deepseek-ai/dsh/package.json').version)" 2>/dev/null || echo "0.1.0")
+          TARBALL="dsh-portable-${VERSION}-linux-armv7l.tar.gz"
+          tar -czvf "$TARBALL" portable/
+          ls -lh *.tar.gz
+
+      # ====== 6. aaa 上传 ======
+      - name: aaa
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-portable-armv7l
+          path: dsh-portable-*.tar.gz
