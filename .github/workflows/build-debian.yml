@@ -197,7 +197,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       # 用 Debian 13 (trixie) 容器构建，确保产物 glibc/库依赖与 Debian 13 匹配。
-      image: debian:13
+      image: termux:latest
     steps:
       - uses: actions/checkout@v5
 
@@ -258,7 +258,7 @@ jobs:
         run: pnpm build
 
       - name: Package .deb (linux x64)
-        run: npx electron-builder --linux deb --armv7l --publish never
+        run: npx electron-builder --linux deb --armhf --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: aaa
