@@ -1,0 +1,53 @@
+name: Build dsh-portable armv7l
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  build-portable-armv7l:
+    name: Build dsh-portable armv7l
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: arm32v7/debian:trixie   # Debian 13
+    steps:
+      - name: Install Node.js from Debian 13 repo
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends \
+            curl ca-certificates \
+            nodejs npm \
+            git python3 binutils file tar gzip xz-utils
+          node --version
+          npm --version
+
+      - uses: actions/checkout@v5
+
+      - name: Install dsh and package
+        run: |
+          npm install -g @deepseek-ai/dsh
+          dsh --version
+
+          mkdir -p portable/app/runtime portable/app/node_modules portable/data
+          cp $(which node) portable/app/runtime/
+          cp -r $(npm root -g)/@deepseek-ai/dsh portable/app/node_modules/@deepseek-ai/
+
+          cat > portable/dsh << 'EOF'
+          #!/bin/sh
+          SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+          export DSH_HOME="$SCRIPT_DIR/data"
+          export PATH="$SCRIPT_DIR/app/runtime:$PATH"
+          exec node "$SCRIPT_DIR/app/node_modules/@deepseek-ai/dsh/bin/dsh" "$@"
+          EOF
+          chmod +x portable/dsh
+
+          VERSION=$(node -e "console.log(require('@deepseek-ai/dsh/package.json').version)" 2>/dev/null || echo "0.1.0")
+          tar -czf "dsh-portable-${VERSION}-linux-armv7l.tar.gz" portable/
+
+      - name: aaa
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-portable-armv7l
+          path: dsh-portable-*.tar.gz
+          retention-days: 30
