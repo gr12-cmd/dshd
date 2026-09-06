@@ -1,3 +1,15 @@
+name: Build dsh-portable armv7l
+
+on:
+  # 手动触发（你在 Actions 页面点按钮）
+  workflow_dispatch:
+  # push 到 main 分支时自动触发
+  push:
+    branches: [main, master]
+  # 每天 UTC 00:00 自动跑一次（北京时间 08:00）
+  schedule:
+    - cron: '0 0 * * *'
+
 jobs:
   build-portable-armv7l:
     name: Build dsh-portable armv7l
@@ -23,6 +35,7 @@ jobs:
             tar \
             gzip \
             which
+          echo "=== Node.js 版本 ==="
           node --version
           npm --version
 
@@ -30,6 +43,7 @@ jobs:
       - name: Install dsh globally
         run: |
           npm install -g @deepseek-ai/dsh
+          echo "=== dsh 版本 ==="
           dsh --version
 
       # ====== 3. 准备便携版目录结构 ======
@@ -47,10 +61,18 @@ jobs:
 
           # 复制 dsh 全局安装包
           DSH_PATH=$(npm root -g)/@deepseek-ai/dsh
-          cp -r $DSH_PATH portable/app/node_modules/@deepseek-ai/
+          if [ -d "$DSH_PATH" ]; then
+            cp -r $DSH_PATH portable/app/node_modules/@deepseek-ai/
+          else
+            echo "::error::找不到 dsh 安装路径: $DSH_PATH"
+            exit 1
+          fi
 
           # 复制 pnpm（如果有）
           which pnpm && cp $(which pnpm) portable/app/ 2>/dev/null || true
+
+          echo "=== 便携版目录结构 ==="
+          ls -la portable/
 
       # ====== 4. 创建启动脚本（Linux armv7l） ======
       - name: Create launcher script
@@ -60,7 +82,7 @@ jobs:
           SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
           export DSH_HOME="$SCRIPT_DIR/data"
           export PATH="$SCRIPT_DIR/app/runtime:$PATH"
-          node "$SCRIPT_DIR/app/node_modules/@deepseek-ai/dsh/bin/dsh" "$@"
+          exec node "$SCRIPT_DIR/app/node_modules/@deepseek-ai/dsh/bin/dsh" "$@"
           EOF
           chmod +x portable/dsh
 
@@ -91,13 +113,18 @@ jobs:
           需要 Linux 内核和 glibc/musl 支持。
           EOF
 
+          echo "=== 启动脚本已创建 ==="
+          ls -la portable/*.sh portable/dsh portable/README.txt 2>/dev/null || true
+
       # ====== 5. 打包 ======
       - name: Package tarball
         run: |
           VERSION=$(node -e "console.log(require('@deepseek-ai/dsh/package.json').version)" 2>/dev/null || echo "0.1.0")
           TARBALL="dsh-portable-${VERSION}-linux-armv7l.tar.gz"
           tar -czvf "$TARBALL" portable/
+          echo "=== 打包完成 ==="
           ls -lh *.tar.gz
+          echo "tarball_name=$TARBALL" >> $GITHUB_OUTPUT
 
       # ====== 6. aaa 上传 ======
       - name: aaa
@@ -105,3 +132,4 @@ jobs:
         with:
           name: dsh-portable-armv7l
           path: dsh-portable-*.tar.gz
+          retention-days: 30
