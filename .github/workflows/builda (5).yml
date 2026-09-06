@@ -22,8 +22,6 @@ jobs:
           node --version
           npm --version
 
-      - uses: actions/checkout@v5
-
       - name: Install dsh and package
         run: |
           npm install -g @deepseek-ai/dsh
