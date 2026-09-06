@@ -1,0 +1,134 @@
+name: iiiiiBuild dsh-portable armv7l
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  build-portable-armv7l:
+    name: Build dsh-portable armv7l
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: termux/termux-docker:arm
+    steps:
+      # ====== 🔥 第一步：先装 Node.js 24（在 checkout 之前！） ======
+      - name: Install Node.js 24 from TUR
+        run: |
+          pkg update -y
+          pkg install -y tur-repo
+          pkg update -y
+          pkg install -y nodejs-lts
+          echo "=== Node.js 版本 ==="
+          node --version
+          npm --version
+
+      # ====== 第二步：现在 checkout 就能用 Node.js 24 了 ======
+      - uses: actions/checkout@v5
+
+      # ====== 3. 安装其他构建工具 ======
+      - name: Install build prerequisites
+        run: |
+          pkg install -y \
+            build-essential \
+            cmake \
+            git \
+            python \
+            binutils \
+            curl \
+            file \
+            tar \
+            gzip \
+            which
+          echo "=== 环境准备完成 ==="
+
+      # ====== 4. 安装 dsh ======
+      - name: Install dsh globally
+        run: |
+          npm install -g @deepseek-ai/dsh
+          echo "=== dsh 版本 ==="
+          dsh --version
+
+      # ====== 5. 准备便携版目录结构 ======
+      - name: Create portable directory structure
+        run: |
+          mkdir -p portable/app/runtime
+          mkdir -p portable/app/node_modules
+          mkdir -p portable/data
+          mkdir -p portable/_build
+
+          cp $(which node) portable/app/runtime/
+          cp $(which npm) portable/app/runtime/ 2>/dev/null || true
+
+          DSH_PATH=$(npm root -g)/@deepseek-ai/dsh
+          if [ -d "$DSH_PATH" ]; then
+            cp -r $DSH_PATH portable/app/node_modules/@deepseek-ai/
+          else
+            echo "::error::找不到 dsh 安装路径: $DSH_PATH"
+            exit 1
+          fi
+
+          which pnpm && cp $(which pnpm) portable/app/ 2>/dev/null || true
+
+          echo "=== 便携版目录结构 ==="
+          ls -la portable/
+
+      # ====== 6. 创建启动脚本 ======
+      - name: Create launcher script
+        run: |
+          cat > portable/dsh << 'EOF'
+          #!/bin/sh
+          SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+          export DSH_HOME="$SCRIPT_DIR/data"
+          export PATH="$SCRIPT_DIR/app/runtime:$PATH"
+          exec node "$SCRIPT_DIR/app/node_modules/@deepseek-ai/dsh/bin/dsh" "$@"
+          EOF
+          chmod +x portable/dsh
+
+          cat > portable/start-web.sh << 'EOF'
+          #!/bin/sh
+          SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+          "$SCRIPT_DIR/dsh" web
+          EOF
+          chmod +x portable/start-web.sh
+
+          cat > portable/README.txt << 'EOF'
+          dsh-portable armv7l
+          ===================
+          解压即用的 DeepSeek Harness 便携版（armv7l / armhf）。
+
+          快速开始：
+            ./dsh web              # 启动 Web UI → http://127.0.0.1:3080
+            ./dsh --help           # 查看所有命令
+            ./start-web.sh         # 快捷启动 Web UI
+
+          数据目录：data/
+          运行时：app/runtime/
+          核心：app/node_modules/@deepseek-ai/dsh
+
+          注意：本包在 armv7l (32-bit ARM) 设备上原生构建，
+          需要 Linux 内核和 glibc/musl 支持。
+          EOF
+
+          echo "=== 启动脚本已创建 ==="
+          ls -la portable/*.sh portable/dsh portable/README.txt 2>/dev/null || true
+
+      # ====== 7. 打包 ======
+      - name: Package tarball
+        run: |
+          VERSION=$(node -e "console.log(require('@deepseek-ai/dsh/package.json').version)" 2>/dev/null || echo "0.1.0")
+          TARBALL="dsh-portable-${VERSION}-linux-armv7l.tar.gz"
+          tar -czvf "$TARBALL" portable/
+          echo "=== 打包完成 ==="
+          ls -lh *.tar.gz
+          echo "tarball_name=$TARBALL" >> $GITHUB_OUTPUT
+
+      # ====== 8. aaa 上传 ======
+      - name: aaa
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-portable-armv7l
+          path: dsh-portable-*.tar.gz
+          retention-days: 30
