@@ -197,7 +197,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       # 用 Debian 13 (trixie) 容器构建，确保产物 glibc/库依赖与 Debian 13 匹配。
-      image: termux:latest
+      image: termux/termux-docker:latest
     steps:
       - uses: actions/checkout@v5
 
